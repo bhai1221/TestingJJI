@@ -1,0 +1,167 @@
+local gui = Instance.new("ScreenGui")
+gui.Name = "AutoCollectAndServerHopGUI"
+gui.Parent = game.CoreGui
+
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Name = "StatusLabel"
+statusLabel.Size = UDim2.new(0, 200, 0, 50)
+statusLabel.Position = UDim2.new(0.5, -100, 0.9, -30)
+statusLabel.Text = "Auto Collect and Server Hop: ACTIVE"
+statusLabel.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+statusLabel.TextColor3 = Color3.new(1, 1, 1)
+statusLabel.Font = Enum.Font.SourceSansBold
+statusLabel.TextScaled = true
+statusLabel.Parent = gui
+
+local dropsLabel = Instance.new("TextLabel")
+dropsLabel.Name = "DropsLabel"
+dropsLabel.Size = UDim2.new(0, 300, 0, 50)
+dropsLabel.Position = UDim2.new(0.5, -150, 0.8, -30)
+dropsLabel.Text = "Drops: Loading..."
+dropsLabel.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+dropsLabel.TextColor3 = Color3.new(1, 1, 1)
+dropsLabel.Font = Enum.Font.SourceSans
+dropsLabel.TextScaled = true
+dropsLabel.Parent = gui
+
+local PlaceID = game.PlaceId
+local AllIDs = {}
+local foundAnything = ""
+local AutoCollectEnabled = true
+local ServerHopEnabled = true
+local isCollecting = false
+local isCollectionComplete = false
+
+local success, message = pcall(function()
+AllIDs = game:GetService('HttpService'):JSONDecode(readfile("NotSameServers.json"))
+end)
+
+if not success then
+AllIDs = { os.date("!*t").hour }
+writefile("NotSameServers.json", game:GetService('HttpService'):JSONEncode(AllIDs))
+end
+
+local function TPReturner()
+local Site
+if foundAnything == "" then
+Site = game.HttpService:JSONDecode(game:HttpGet('https://games.roblox.com/v1/games/' .. PlaceID .. '/servers/Public?sortOrder=Asc&limit=100'))
+else
+Site = game.HttpService:JSONDecode(game:HttpGet('https://games.roblox.com/v1/games/' .. PlaceID .. '/servers/Public?sortOrder=Asc&limit=100&cursor=' .. foundAnything))
+end
+
+if Site.nextPageCursor and Site.nextPageCursor ~= "null" and Site.nextPageCursor ~= nil then
+foundAnything = Site.nextPageCursor
+end
+
+local serverID = nil
+for _, v in pairs(Site.data) do
+serverID = tostring(v.id)
+break
+end
+
+if serverID then
+table.insert(AllIDs, serverID)
+pcall(function()
+writefile("NotSameServers.json", game:GetService('HttpService'):JSONEncode(AllIDs))
+wait()
+game:GetService("TeleportService"):TeleportToPlaceInstance(PlaceID, serverID, game.Players.LocalPlayer)
+end)
+wait(1)
+end
+end
+
+local function Teleport()
+while ServerHopEnabled do
+if isCollectionComplete then
+pcall(function()
+TPReturner()
+if foundAnything ~= "" then
+TPReturner()
+end
+end)
+
+isCollectionComplete = false
+end
+wait(0.3)
+end
+end
+
+local clickX, clickY = 145, 506 
+
+local function clickOnce()
+game:GetService("VirtualInputManager"):SendMouseButtonEvent(clickX, clickY, 0, true, game, 1)
+game:GetService("VirtualInputManager"):SendMouseButtonEvent(clickX, clickY, 0, false, game, 1)
+end
+
+local function autoClicker()
+while true do
+clickOnce()
+wait(0.1)
+end
+end
+
+local function collectDrops()
+while AutoCollectEnabled do
+local items = workspace:FindFirstChild("Objects") and workspace.Objects:FindFirstChild("Drops") and workspace.Objects.Drops:GetChildren() or {}
+local player = game.Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+
+if not humanoidRootPart then return end
+
+isCollecting = true
+local dropNames = {}
+
+for _, item in pairs(items) do
+local itemRoot = item:FindFirstChild("Root")
+local collectPart = item:FindFirstChild("Collect")
+
+if itemRoot and collectPart then
+local itemName = item.Name
+
+if string.match(itemName, "Demon Finger") or
+string.match(itemName, "Talisman") or
+string.match(itemName, "Cursed Fragment") or
+string.match(itemName, "Heavenly Chains") or
+string.match(itemName, "Transfigured Human") or
+string.match(itemName, "Cursed Tentacle") or
+string.match(itemName, "Demon Blob") or
+string.match(itemName, "Purified Curse Hand") or
+string.match(itemName, "Maximum Scroll") or
+string.match(itemName, "Energy Nature Scroll") or
+string.match(itemName, "Domain Shard") or
+string.match(itemName, "Cursebloom") then
+
+humanoidRootPart.CFrame = itemRoot.CFrame
+task.wait(0.1)
+
+for _, descendant in pairs(item:GetDescendants()) do
+if descendant:IsA("ProximityPrompt") then
+fireproximityprompt(descendant, 1, true)
+end
+end
+
+table.insert(dropNames, itemName)
+dropsLabel.Text = "Drops: " .. #workspace.Objects.Drops:GetChildren() .. "\n" .. table.concat(dropNames, ", ")
+end
+end
+end
+
+if #workspace.Objects.Drops:GetChildren() == 0 then
+isCollecting = false
+isCollectionComplete = true
+end
+
+wait(0.2)
+end
+end
+
+task.spawn(collectDrops)
+task.spawn(Teleport)
+
+task.spawn(autoClicker)
+
+game:GetService("Players").LocalPlayer.Idled:Connect(function()
+game:GetService("VirtualUser"):CaptureController()
+game:GetService("VirtualUser"):ClickButton2(Vector2.new())
+end)
